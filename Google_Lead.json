@@ -1,0 +1,673 @@
+{
+  "name": "Google_Lead",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "lead",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Location"
+            },
+            {
+              "fieldLabel": "type"
+            },
+            {
+              "fieldLabel": "number of element"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -3296,
+        16
+      ],
+      "id": "ec4cd209-abd2-4bef-83a8-dd9ea16bb1ad",
+      "name": "On form submission",
+      "webhookId": "d261d5c7-d28d-4c1e-9b8a-60a3a872a6c0",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://places.googleapis.com/v1/places:searchText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Goog-Api-Key",
+              "value": "AIzaSyBC0lFfrO3Jmg4Wx0ckms4LZHw-cTDP6VA"
+            },
+            {
+              "name": "X-Goog-FieldMask",
+              "value": "places.displayName,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"textQuery\": \" {{ $json.body.category_type }} {{ $json.body.location }}in \",\n  \"pageSize\": {{ $json.body.numbers_of_elements }}\n}",
+        "options": {}
+      },
+      "id": "22de299d-40a8-4374-aaf2-7b8d9e6af3ca",
+      "name": "Search Google Places (Free)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3344,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let results = [];\nconst places = $json.places || [];\n\nfor (const place of places) {\n  results.push({\n    json: {\n      business_name: place.displayName?.text || \"\",\n      address: place.formattedAddress || \"\",\n      phone: place.nationalPhoneNumber || \"\",\n      website: place.websiteUri || \"\"\n    }\n  });\n}\nreturn results;\n"
+      },
+      "id": "66230081-454d-4f66-9d37-135c0aee1b02",
+      "name": "Extract Websites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3088,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "f2742736-f047-4d55-ae46-adb8343805e7",
+      "name": "Remove Duplicates",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "position": [
+        -2848,
+        688
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "maxItems": 20
+      },
+      "id": "dd7efe0c-dd19-4aaa-937f-2cc7dc572abe",
+      "name": "Limit",
+      "type": "n8n-nodes-base.limit",
+      "position": [
+        -2640,
+        688
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "776835f6-b88d-4561-a95a-f603cbad2b41",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        -2448,
+        688
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.website }} || 'https://example.com'",
+        "options": {}
+      },
+      "id": "d6e42a94-b63d-4f46-a2c3-ffd2b689a476",
+      "name": "Scrape Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -2240,
+        720
+      ],
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "584fa75d-092f-46e9-b01d-f806ffd10eb5",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        -2048,
+        720
+      ],
+      "typeVersion": 1.1,
+      "webhookId": "cf2e9d54-6742-49cf-b2d1-35946d543d12"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const html = $json.data || \"\";\n\nlet cleaned = html\n.replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n.replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n.replace(/<!--[\\s\\S]*?-->/g, '')\n.replace(/<[^>]+>/g, ' ')\n.replace(/https?:\\/\\/\\S+/g, '')\n.replace(/\\s+/g, ' ')\n.trim();\n\ncleaned = cleaned.slice(0, 3000);\n\n// NEW: Prevent the AI from crashing if the website is blank/dead\nif (!cleaned) {\n  cleaned = \"No text found on this website.\";\n}\n\nreturn {\n  json: {\n    clean_text: cleaned\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1840,
+        720
+      ],
+      "id": "1082a247-aa3b-4d4b-bfad-e67e92b3a9f0",
+      "name": "Clean HTML"
+    },
+    {
+      "parameters": {
+        "text": "={{$json.clean_text}}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "email",
+              "description": "Return ONE primary business email address as plain text. Return an empty string if no email exists."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        -1648,
+        720
+      ],
+      "id": "ef00581f-f625-4463-aefd-08cba13490c6",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "quick-howl-496915-v1",
+          "mode": "id"
+        },
+        "options": {
+          "maxOutputTokens": 300,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        -1648,
+        912
+      ],
+      "id": "c9b94729-59d7-47eb-b3ae-89de8f330f1c",
+      "name": "Google Vertex Chat Model",
+      "credentials": {
+        "googleApi": {
+          "id": "9yyDXXFPfcN5adaJ",
+          "name": "chat model"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "business_name",
+              "value": "={{ $('Loop Over Items').item.json.business_name }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "address",
+              "value": "={{ $('Loop Over Items').item.json.address }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "phone",
+              "value": "={{ $('Loop Over Items').item.json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "website",
+              "value": "={{ $('Loop Over Items').item.json.website }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7ead44ae-f817-4740-b6c6-795a424057c2",
+      "name": "Merge Google Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1vIAfCqn-_T0LxgmBHpzH32KiE3AyDHzWgplNd5-KjpQ/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vIAfCqn-_T0LxgmBHpzH32KiE3AyDHzWgplNd5-KjpQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email || \"\" }}",
+            "phone": "={{ $json.phone }}",
+            "business_name": "={{ $json.business_name }}",
+            "address": "={{ $json.address }}",
+            "website": "={{ $json.website }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "business_name",
+              "displayName": "business_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "address",
+              "displayName": "address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6e6d2d07-327f-49a8-b358-72464f682f0a",
+      "name": "Add to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        -1216,
+        224
+      ],
+      "typeVersion": 4.5,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "7q3shlXT3vnSkvmh",
+          "name": "sayan_sheet"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "customer-lead",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3568,
+        688
+      ],
+      "id": "fc7a01e2-3ee5-4898-a338-9abd7104c69d",
+      "name": "Webhook",
+      "webhookId": "a91fee75-c443-46df-a88b-fe34b916fefe"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sudeshnas.info/codezsols_infotech/ci_dev/user_files/msit/backend/api/customer_lead/update_status.php",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\":{{ $('Webhook').item.json.body.lead_id }},\n  \"status\": \"completed\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -512,
+        720
+      ],
+      "id": "afa6be87-b3c2-4865-9912-04dd691ecde6",
+      "name": "update_completed"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sudeshnas.info/codezsols_infotech/ci_dev/user_files/msit/backend/api/customer_lead/update_status.php",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $('Webhook').item.json.body.lead_id }}\",\n  \"status\": \"active\",\n  \"business_name\": \"{{ $json.business_name }}\",\n  \"phone\": \"{{ $json.phone }}\",\n  \"email\": \"{{ $json.email || 'N/A' }}\",\n  \"address\": \"{{ $json.address }}\",\n  \"website\": \"{{ $json.website }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -992,
+        720
+      ],
+      "id": "2b5d0027-e146-4bb4-a6aa-8fcfd14745b9",
+      "name": "update_active"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sudeshnas.info/codezsols_infotech/ci_dev/user_files/msit/backend/api/customer_lead/save_results.php",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "lead_id",
+              "value": "={{ $('Webhook').item.json.body.lead_id }}"
+            },
+            {
+              "name": "business_name",
+              "value": "={{ $('Extract Websites').item.json.business_name }}"
+            },
+            {
+              "name": "phone_no",
+              "value": "={{ $('Extract Websites').item.json.phone }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $json.email || 'N/A' }}"
+            },
+            {
+              "name": "address",
+              "value": "={{ $('Extract Websites').item.json.address }}"
+            },
+            {
+              "name": "website",
+              "value": "={{ $('Extract Websites').item.json.website }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -752,
+        720
+      ],
+      "id": "497b1c95-e4c5-4502-aace-d97a07f13e92",
+      "name": "save_result"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "reviveblr.info",
+            "content-length": "97",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "113.21.76.122",
+            "cf-ipcountry": "IN",
+            "cf-ray": "a15c5773d8a2e59f-BOM",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "2aab565b-5e9d-4c5e-b15e-7c9215650f28",
+            "connection": "keep-alive",
+            "content-type": "application/json",
+            "x-forwarded-for": "113.21.76.122",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "lead_id": 28,
+            "user_id": 19,
+            "location": "bongaon",
+            "category_type": "school",
+            "numbers_of_elements": 3
+          },
+          "webhookUrl": "https://reviveblr.info/webhook/customer-lead",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "On form submission": {
+      "main": [
+        []
+      ]
+    },
+    "Search Google Places (Free)": {
+      "main": [
+        [
+          {
+            "node": "Extract Websites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Websites": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Scrape Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Site": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Clean HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean HTML": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Merge Google Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Google Data": {
+      "main": [
+        [
+          {
+            "node": "update_active",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Add to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Search Google Places (Free)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_completed": {
+      "main": [
+        []
+      ]
+    },
+    "update_active": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "save_result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_result": {
+      "main": [
+        [
+          {
+            "node": "update_completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6d2a906b-74d0-4e0a-8db2-1e6a88f884dd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1a070f62fd570f9b448428174e26a566e2f1c714d4e4fbaf2aaf4bac52e484ca"
+  },
+  "id": "iKh9eqVX66agtRaU",
+  "tags": []
+}
